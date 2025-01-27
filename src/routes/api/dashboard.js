@@ -9,7 +9,6 @@ const Transaction = require('../../models/Transaction');
 // Get Dashboard Overview
 router.get('/overview', authenticateToken, async (req, res) => {
   try {
-    // Get sales trends
     const salesTrends = await Sale.aggregate([
       {
         $group: {
