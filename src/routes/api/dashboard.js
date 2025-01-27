@@ -13,17 +13,15 @@ router.get('/overview', authenticateToken, async (req, res) => {
     const dateRange = timeRange === 'weekly' ? 7 : 30;
     const startDate = new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000);
 
-    // Add status check to all aggregations
-    const salesMatch = {
-      createdAt: { $gte: startDate },
-      status: 'completed'
-    };
-
-    const [salesData, regionalData, popularProducts, customerData, recentTransactions] = await Promise.all([
-      // Sales Trends
-      Sale.aggregate([
+    const [salesTrends, popularProducts, customerGrowth, recentActivities] = await Promise.all([
+      // Sales trends using Transaction model
+      Transaction.aggregate([
         {
-          $match: salesMatch
+          $match: {
+            createdAt: { $gte: startDate },
+            status: 'completed',
+            paymentStatus: 'paid'
+          }
         },
         {
           $group: {
@@ -31,69 +29,43 @@ router.get('/overview', authenticateToken, async (req, res) => {
               date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }
             },
             revenue: { $sum: "$amount" },
-            profit: { $sum: "$profit" },
             orders: { $sum: 1 }
           }
         },
         { $sort: { "_id.date": -1 } }
       ]),
 
-      // Regional Data
-      Sale.aggregate([
-        {
-          $match: salesMatch
-        },
-        {
-          $group: {
-            _id: "$region",
-            revenue: { $sum: "$amount" },
-            orders: { $sum: 1 }
-          }
-        }
-      ]),
-
-      // Popular Products
+      // Popular products
       Product.aggregate([
         {
-          $match: { status: { $in: ['sold', 'available'] } }
+          $match: { status: 'sold' }
         },
         {
           $lookup: {
-            from: 'sales',
+            from: 'transactions',
             localField: '_id',
             foreignField: 'productId',
-            as: 'sales',
-            pipeline: [{ $match: { status: 'completed' } }]
+            as: 'sales'
           }
         },
         {
-          $addFields: {
+          $project: {
+            type: 1,
+            username: 1,
+            price: 1,
             totalSales: { $size: '$sales' },
             totalRevenue: { $sum: '$sales.amount' }
           }
         },
-        {
-          $sort: { totalSales: -1, totalRevenue: -1 }
-        },
-        {
-          $limit: 5
-        },
-        {
-          $project: {
-            username: 1,
-            type: 1,
-            price: 1,
-            status: 1,
-            totalSales: 1,
-            totalRevenue: 1
-          }
-        }
+        { $sort: { totalSales: -1, totalRevenue: -1 } },
+        { $limit: 5 }
       ]),
 
-      // Customer Growth
-      Customer.aggregate([
+      // Customer growth
+      User.aggregate([
         {
           $match: {
+            role: 'user',
             createdAt: { $gte: startDate }
           }
         },
@@ -108,204 +80,198 @@ router.get('/overview', authenticateToken, async (req, res) => {
         { $sort: { "_id.date": -1 } }
       ]),
 
-      // Recent Activities
+      // Recent activities
       Transaction.find({
-        createdAt: { $gte: startDate }
+        createdAt: { $gte: startDate },
+        status: 'completed'
       })
       .populate('productId', 'username type price')
-      .populate('customerId', 'name email')
+      .populate('customerId', 'firstName lastName email')
       .sort('-createdAt')
       .limit(10)
       .lean()
     ]);
 
-    const validatedResponse = {
+    res.json({
       salesTrends: {
-        daily: salesData.map(day => ({
-          date: day._id.date,
-          revenue: day.revenue || 0,
-          profit: day.profit || 0,
-          orders: day.orders || 0
-        })),
+        daily: salesTrends,
         summary: {
-          totalRevenue: salesData.reduce((sum, day) => sum + (day.revenue || 0), 0),
-          totalProfit: salesData.reduce((sum, day) => sum + (day.profit || 0), 0),
-          totalOrders: salesData.reduce((sum, day) => sum + (day.orders || 0), 0)
+          totalRevenue: salesTrends.reduce((sum, day) => sum + day.revenue, 0),
+          totalOrders: salesTrends.reduce((sum, day) => sum + day.orders, 0)
         }
       },
-      regionalData: regionalData
-        .filter(region => region._id)
-        .map(region => ({
-          region: region._id,
-          revenue: region.revenue || 0,
-          orders: region.orders || 0
-        })),
-      popularProducts: popularProducts
-        .filter(product => product.totalSales > 0)
-        .map(product => ({
-          ...product,
-          totalRevenue: product.totalRevenue || 0,
-          totalSales: product.totalSales || 0
-        })),
+      popularProducts,
       customerGrowth: {
-        daily: customerData,
+        daily: customerGrowth,
         summary: {
-          newCustomers: customerData.reduce((sum, day) => sum + (day.newCustomers || 0), 0)
+          newCustomers: customerGrowth.reduce((sum, day) => sum + day.newCustomers, 0)
         }
       },
-      recentActivities: recentTransactions
-    };
+      recentActivities
+    });
 
-    res.json(validatedResponse);
   } catch (error) {
     console.error('Dashboard Overview Error:', error);
-    res.status(500).json({
-      error: 'Failed to fetch dashboard overview',
-      details: error.message
-    });
+    res.status(500).json({ error: 'Failed to fetch overview', details: error.message });
   }
 });
 
 // Get Dashboard Metrics
 router.get('/metrics', authenticateToken, async (req, res) => {
   try {
-    const { timeRange = 'weekly', compareWith = 'previous' } = req.query;
+    const { timeRange = 'weekly' } = req.query;
     const dateRange = timeRange === 'weekly' ? 7 : 30;
-    const previousRange = timeRange === 'weekly' ? 14 : 60;
+    const startDate = new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000);
+    const previousStartDate = new Date(Date.now() - (dateRange * 2) * 24 * 60 * 60 * 1000);
 
-    const baseMatch = {
-      status: 'completed',
-      paymentStatus: 'paid'
-    };
-
-    const [
-      currentRevenue,
-      previousRevenue,
-      customerStats,
-      transactionStats,
-      productStats
-    ] = await Promise.all([
+    const [currentMetrics, previousMetrics, customerData, productStats] = await Promise.all([
+      // Current period metrics
       Transaction.aggregate([
         {
           $match: {
-            ...baseMatch,
-            createdAt: { $gte: new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000) }
+            createdAt: { $gte: startDate },
+            status: 'completed',
+            paymentStatus: 'paid'
           }
-        },
-        {
-          $lookup: {
-            from: 'sales',
-            localField: '_id',
-            foreignField: 'transactionId',
-            as: 'sale'
-          }
-        },
-        {
-          $unwind: '$sale'
         },
         {
           $group: {
             _id: null,
-            total: { $sum: '$amount' },
-            count: { $sum: 1 }
+            totalRevenue: { $sum: '$amount' },
+            transactionCount: { $sum: 1 },
+            uniqueCustomers: { $addToSet: '$customerId' }
           }
         }
       ]),
-      Sale.aggregate([
+
+      // Previous period metrics
+      Transaction.aggregate([
         {
           $match: {
-            createdAt: {
-              $gte: new Date(Date.now() - previousRange * 24 * 60 * 60 * 1000),
-              $lt: new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000)
-            }
+            createdAt: { 
+              $gte: previousStartDate,
+              $lt: startDate
+            },
+            status: 'completed',
+            paymentStatus: 'paid'
           }
         },
-        { $group: { _id: null, total: { $sum: "$amount" } } }
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$amount' },
+            transactionCount: { $sum: 1 }
+          }
+        }
       ]),
-      Customer.aggregate([
+
+      // Customer metrics
+      User.aggregate([
+        {
+          $match: {
+            role: 'user'  // Non-admin users are customers
+          }
+        },
         {
           $facet: {
-            total: [{ $count: "value" }],
+            total: [{ $count: 'value' }],
             new: [
               {
                 $match: {
-                  createdAt: { $gte: new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000) }
+                  createdAt: { $gte: startDate }
                 }
               },
-              { $count: "value" }
+              { $count: 'value' }
+            ],
+            previousPeriod: [
+              {
+                $match: {
+                  createdAt: {
+                    $gte: previousStartDate,
+                    $lt: startDate
+                  }
+                }
+              },
+              { $count: 'value' }
             ]
           }
         }
       ]),
-      Transaction.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000) }
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            count: { $sum: 1 },
-            total: { $sum: "$price" }
-          }
-        }
-      ]),
+
+      // Product metrics
       Product.aggregate([
         {
           $facet: {
-            total: [{ $count: "value" }],
+            total: [{ $count: 'value' }],
             outOfStock: [
-              { $match: { status: "sold" } },
-              { $count: "value" }
+              { $match: { status: 'sold' } },
+              { $count: 'value' }
+            ],
+            recentlySold: [
+              {
+                $match: {
+                  status: 'sold',
+                  updatedAt: { $gte: startDate }
+                }
+              },
+              { $count: 'value' }
             ]
           }
         }
       ])
     ]);
 
-    // Add revenue targets calculation
-    const targets = await calculateRevenueTargets(timeRange);
-    const performanceMetrics = await calculatePerformanceMetrics(timeRange);
+    const current = currentMetrics[0] || { totalRevenue: 0, transactionCount: 0, uniqueCustomers: [] };
+    const previous = previousMetrics[0] || { totalRevenue: 0, transactionCount: 0 };
+    const customerMetrics = customerData[0] || { total: [{ value: 0 }], new: [{ value: 0 }] };
+    const productMetrics = productStats[0] || { total: [{ value: 0 }], outOfStock: [{ value: 0 }] };
 
+    // Calculate revenue target
+    const targets = await calculateRevenueTargets(timeRange);
+    
     res.json({
       salesTarget: {
-        current: currentRevenue[0]?.total || 0,
+        current: current.totalRevenue,
         target: targets.currentTarget,
-        percentage: ((currentRevenue[0]?.total || 0) / targets.currentTarget) * 100,
+        percentage: (current.totalRevenue / targets.currentTarget) * 100,
         timeLeft: targets.timeLeft
       },
       revenue: {
-        value: currentRevenue[0]?.total || 0,
-        previousValue: previousRevenue[0]?.total || 0,
-        growth: calculateGrowthPercentage(
-          currentRevenue[0]?.total,
-          previousRevenue[0]?.total
-        ),
-        performance: performanceMetrics.revenue
+        value: current.totalRevenue,
+        previousValue: previous.totalRevenue,
+        growth: calculateGrowthPercentage(current.totalRevenue, previous.totalRevenue),
+        performance: {
+          trend: current.totalRevenue > previous.totalRevenue ? 'increasing' : 'decreasing',
+          comparison: current.totalRevenue > previous.totalRevenue ? 'above_average' : 'below_average',
+          percentageFromAverage: calculateGrowthPercentage(current.totalRevenue, previous.totalRevenue)
+        }
       },
       customers: {
-        value: customerStats[0]?.total[0]?.value || 0,
-        newCustomers: customerStats[0]?.new[0]?.value || 0,
-        growth: 0
+        value: customerMetrics.total[0]?.value || 0,
+        newCustomers: customerMetrics.new[0]?.value || 0,
+        growth: calculateGrowthPercentage(
+          customerMetrics.new[0]?.value || 0,
+          customerMetrics.previousPeriod[0]?.value || 0
+        )
       },
       transactions: {
-        value: transactionStats[0]?.count || 0,
-        avgTicketSize: transactionStats[0] ? transactionStats[0].total / transactionStats[0].count : 0,
-        growth: 0
+        value: current.transactionCount,
+        avgTicketSize: current.transactionCount ? current.totalRevenue / current.transactionCount : 0,
+        growth: calculateGrowthPercentage(current.transactionCount, previous.transactionCount)
       },
       products: {
-        value: productStats[0]?.total[0]?.value || 0,
-        outOfStock: productStats[0]?.outOfStock[0]?.value || 0,
-        growth: 0 
+        value: productMetrics.total[0]?.value || 0,
+        outOfStock: productMetrics.outOfStock[0]?.value || 0,
+        growth: calculateGrowthPercentage(
+          productMetrics.recentlySold[0]?.value || 0,
+          productMetrics.total[0]?.value || 1
+        )
       }
     });
+
   } catch (error) {
     console.error('Dashboard Metrics Error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch dashboard metrics',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Failed to fetch metrics', details: error.message });
   }
 });
 

@@ -76,12 +76,38 @@ transactionSchema.post('save', async function(doc) {
         type: doc.meta?.productType,
         priceAtSale: doc.amount
       });
-
       await sale.save();
+
+      // Update user metrics
+      const User = mongoose.model('User');
+      const user = await User.findById(doc.userId);
+      if (user) {
+        await user.updateMetrics(doc.amount);
+        await user.trackActivity({
+          type: 'purchase',
+          details: `Purchased product for ${doc.amount}`,
+          metadata: {
+            productId: doc.productId,
+            amount: doc.amount,
+            transactionId: doc._id
+          }
+        });
+      }
+
+      const Product = mongoose.model('Product');
+      const product = await Product.findById(doc.productId);
+      if (product) {
+        await product.recordSale(doc.amount);
+      }
     } catch (error) {
-      console.error('Error creating sale record:', error);
+      console.error('Transaction post-save error:', error);
     }
   }
 });
+
+transactionSchema.index({ createdAt: -1, status: 1, paymentStatus: 1 });
+transactionSchema.index({ userId: 1, createdAt: -1 });
+transactionSchema.index({ customerId: 1, createdAt: -1 });
+transactionSchema.index({ productId: 1, status: 1 });
 
 module.exports = mongoose.model('Transaction', transactionSchema);

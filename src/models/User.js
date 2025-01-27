@@ -70,4 +70,31 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
+userSchema.methods.updateMetrics = async function(transactionAmount) {
+  this.metrics.totalSpent += transactionAmount;
+  this.metrics.totalOrders += 1;
+  this.metrics.lastOrderDate = new Date();
+
+  if (this.metrics.totalSpent >= 1000000) this.segment = 'platinum';
+  else if (this.metrics.totalSpent >= 500000) this.segment = 'gold';
+  else if (this.metrics.totalSpent >= 100000) this.segment = 'silver';
+
+  return this.save();
+};
+
+userSchema.methods.trackActivity = async function(activity) {
+  const ActivityLog = mongoose.model('ActivityLog');
+  return ActivityLog.create({
+    userId: this._id,
+    type: activity.type,
+    details: activity.details,
+    metadata: activity.metadata
+  });
+};
+
+userSchema.index({ role: 1, createdAt: -1 });
+userSchema.index({ email: 1 }, { unique: true });
+userSchema.index({ segment: 1 });
+userSchema.index({ 'metrics.totalSpent': -1 });
+
 module.exports = mongoose.model('User', userSchema);
