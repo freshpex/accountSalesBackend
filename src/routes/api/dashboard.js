@@ -13,8 +13,9 @@ router.get('/overview', authenticateToken, async (req, res) => {
     const { timeRange = 'monthly' } = req.query;
     const dateRange = timeRange === 'weekly' ? 7 : 30;
     const startDate = new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000);
+    const previousStartDate = new Date(Date.now() - (dateRange * 2) * 24 * 60 * 60 * 1000);
 
-    const [salesTrends, popularProducts, customerGrowth, recentActivities] = await Promise.all([
+    const [salesTrends, popularProducts, customerGrowth, recentActivities, regionalStats] = await Promise.all([
       Transaction.aggregate([
         {
           $match: {
@@ -105,7 +106,112 @@ router.get('/overview', authenticateToken, async (req, res) => {
       .populate('customerId', 'firstName lastName email')
       .sort('-createdAt')
       .limit(10)
-      .lean()
+      .lean(),
+
+      Transaction.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: startDate },
+            status: 'completed',
+            paymentStatus: 'paid'
+          }
+        },
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'productId',
+            foreignField: '_id',
+            as: 'product'
+          }
+        },
+        {
+          $unwind: '$product'
+        },
+        {
+          $group: {
+            _id: '$product.region',
+            currentRevenue: { $sum: '$amount' },
+            orders: { $sum: 1 },
+            products: { $addToSet: '$productId' }
+          }
+        },
+        {
+          $lookup: {
+            from: 'transactions',
+            let: { region: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$status', 'completed'] },
+                      { $eq: ['$paymentStatus', 'paid'] },
+                      {
+                        $gte: ['$createdAt', previousStartDate]
+                      },
+                      {
+                        $lt: ['$createdAt', startDate]
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                $lookup: {
+                  from: 'products',
+                  localField: 'productId',
+                  foreignField: '_id',
+                  as: 'product'
+                }
+              },
+              {
+                $unwind: '$product'
+              },
+              {
+                $match: {
+                  $expr: {
+                    $eq: ['$product.region', '$$region']
+                  }
+                }
+              },
+              {
+                $group: {
+                  _id: null,
+                  previousRevenue: { $sum: '$amount' }
+                }
+              }
+            ],
+            as: 'previousPeriod'
+          }
+        },
+        {
+          $project: {
+            region: '$_id',
+            revenue: '$currentRevenue',
+            orders: '$orders',
+            productCount: { $size: '$products' },
+            growth: {
+              $multiply: [
+                {
+                  $divide: [
+                    { $subtract: ['$currentRevenue', { $ifNull: [{ $arrayElemAt: ['$previousPeriod.previousRevenue', 0] }, 0] }] },
+                    { $max: [{ $ifNull: [{ $arrayElemAt: ['$previousPeriod.previousRevenue', 0] }, 1] }, 1] }
+                  ]
+                },
+                100
+              ]
+            }
+          }
+        },
+        {
+          $match: {
+            region: { $ne: null }
+          }
+        },
+        {
+          $sort: { revenue: -1 }
+        }
+      ])
     ]);
 
     // Format the response with daily, weekly, and monthly data
@@ -150,6 +256,13 @@ router.get('/overview', authenticateToken, async (req, res) => {
           newCustomers: customerGrowth.reduce((sum, day) => sum + day.newCustomers, 0)
         }
       },
+      regionalData: regionalStats.map(region => ({
+        region: region.region || 'unknown',
+        revenue: region.revenue,
+        orders: region.orders,
+        productCount: region.productCount,
+        growth: parseFloat(region.growth.toFixed(2))
+      })),
       recentActivities
     });
 
