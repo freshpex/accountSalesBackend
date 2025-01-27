@@ -22,7 +22,6 @@ router.get('/', authenticateToken, async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         phoneNumber: user.phoneNumber,
-        // Add other default fields as needed
         notificationPreferences: {
           email: { newsUpdates: true, accountActivity: true, promotions: false },
           push: { newMessages: true, mentions: true, reminders: false },

@@ -12,7 +12,6 @@ const profileSchema = new mongoose.Schema({
   phoneNumber: String,
   address: String,
   country: String,
-  // Add any other profile fields you need
 }, {
   timestamps: true
 });
