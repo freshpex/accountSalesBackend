@@ -1,16 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../../middleware/auth');
-const SalesReport = require('../../models/SalesReport');
-const Transaction = require('../../models/Transaction');
+const Sale = require('../../models/Sale');
 const Product = require('../../models/Product');
-const User = require('../../models/User');
 
 router.get('/report', authenticateToken, async (req, res) => {
   try {
     const { dateRange, region } = req.query;
     
-    // Get the date range
     const now = new Date();
     let startDate, endDate;
     
@@ -32,59 +29,9 @@ router.get('/report', authenticateToken, async (req, res) => {
         endDate = new Date(now.getFullYear(), 11, 31);
     }
 
-    // First try to get existing report
-    let report = await SalesReport.findOne()
-      .sort({ 'period.end': -1 })
-      .populate({
-        path: 'products.productId',
-        select: 'username price status'
-      })
-      .populate({
-        path: 'transactions',
-        select: 'amount status createdAt'
-      });
-
-    let responseData;
-
-    if (report) {
-      // Use existing report but update with latest transaction data
-      const latestTransactions = await Transaction.find({
-        createdAt: { $gte: startDate, $lte: endDate },
-        status: 'completed'
-      });
-
-      const totalRevenue = latestTransactions.reduce((sum, t) => sum + t.amount, 0);
-      
-      responseData = {
-        summary: {
-          ...report.summary,
-          totalRevenue: totalRevenue || report.summary.totalRevenue,
-          totalTransactions: latestTransactions.length || report.summary.totalTransactions
-        },
-        monthlySales: report.monthlySales,
-        regionalData: region === 'all' ? report.regionalData : 
-          report.regionalData.filter(r => r.region.toLowerCase() === region.toLowerCase()),
-        popularProducts: report.products.map(p => ({
-          id: p.productId._id,
-          name: p.productId.username,
-          price: p.productId.price,
-          status: p.productId.status,
-          units: p.units,
-          revenue: p.revenue,
-          growth: p.growth
-        }))
-      };
-    } else {
-      // Generate new report only if no existing report
-      const [transactions, products] = await Promise.all([
-        Transaction.find({
-          createdAt: { $gte: startDate, $lte: endDate },
-          status: 'completed'
-        }).populate('productId'),
-        Product.find({ status: 'sold' })
-      ]);
-
-      const monthlyData = await Transaction.aggregate([
+    // Use Sale model directly instead of SalesReport
+    const [salesData, productData, regionalData] = await Promise.all([
+      Sale.aggregate([
         {
           $match: {
             createdAt: { $gte: startDate, $lte: endDate },
@@ -93,61 +40,115 @@ router.get('/report', authenticateToken, async (req, res) => {
         },
         {
           $group: {
-            _id: { $month: '$createdAt' },
-            revenue: { $sum: '$amount' },
-            itemValue: { $avg: '$amount' }
+            _id: null,
+            totalRevenue: { $sum: "$amount" },
+            totalTransactions: { $sum: 1 },
+            avgTransactionValue: { $avg: "$amount" }
+          }
+        }
+      ]),
+
+      Sale.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: startDate, $lte: endDate },
+            status: 'completed'
           }
         },
-        { $sort: { _id: 1 } }
-      ]);
-
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                         'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-      responseData = {
-        summary: {
-          totalRevenue: transactions.reduce((sum, t) => sum + t.amount, 0),
-          totalTransactions: transactions.length,
-          totalProducts: products.length,
-          currentTarget: 231032444,
-          totalTarget: 500000000,
-          revenueGrowth: 16.5,
-          customerGrowth: 1.5,
-          productGrowth: -1.5
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'productId',
+            foreignField: '_id',
+            as: 'product'
+          }
         },
-        monthlySales: monthlyData.map(m => ({
-          month: monthNames[m._id - 1],
-          revenue: m.revenue,
-          itemValue: m.itemValue
-        })),
-        regionalData: region === 'all' ? [] : [{
-          region: region,
-          growth: 50
-        }],
-        popularProducts: products.slice(0, 5).map(p => ({
-          id: p._id,
-          name: p.username,
-          price: p.price,
-          status: p.status,
-          units: 0,
-          revenue: 0,
-          growth: 0
-        }))
-      };
+        {
+          $unwind: '$product'
+        },
+        {
+          $group: {
+            _id: '$productId',
+            name: { $first: '$product.username' },
+            price: { $first: '$product.price' },
+            status: { $first: '$product.status' },
+            units: { $sum: 1 },
+            revenue: { $sum: '$amount' }
+          }
+        },
+        { $sort: { revenue: -1 } },
+        { $limit: 5 }
+      ]),
 
-      // Save new report
-      report = new SalesReport({
-        period: { start: startDate, end: endDate },
-        ...responseData,
-        products: responseData.popularProducts.map(p => ({
-          productId: p.id,
-          units: p.units,
-          revenue: p.revenue,
-          growth: p.growth
-        }))
-      });
-      await report.save();
-    }
+      Sale.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: startDate, $lte: endDate },
+            status: 'completed',
+            region: { $exists: true }
+          }
+        },
+        {
+          $group: {
+            _id: '$region',
+            revenue: { $sum: '$amount' },
+            transactions: { $sum: 1 }
+          }
+        }
+      ])
+    ]);
+
+    const responseData = {
+      summary: {
+        totalRevenue: salesData[0]?.totalRevenue || 0,
+        totalTransactions: salesData[0]?.totalTransactions || 0,
+        totalCustomers: await Sale.distinct('customerId', {
+          createdAt: { $gte: startDate, $lte: endDate },
+          status: 'completed'
+        }).then(customers => customers.length),
+        totalTarget: 500000000,
+        currentTarget: 231032444,
+        revenueGrowth: 16.5,
+        customerGrowth: 1.5,
+        totalProducts: await Product.countDocuments(),
+        productGrowth: -1.5
+      },
+      monthlySales: await Sale.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: startDate, $lte: endDate },
+            status: 'completed'
+          }
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m", date: "$createdAt" } },
+            revenue: { $sum: "$amount" },
+            itemValue: { $avg: "$amount" }
+          }
+        },
+        {
+          $project: {
+            month: {
+              $arrayElemAt: [
+                ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                { $subtract: [{ $month: { $dateFromString: { dateString: "$_id" } } }, 1] }
+              ]
+            },
+            revenue: 1,
+            itemValue: 1
+          }
+        },
+        { $sort: { "_id": 1 } }
+      ]),
+      regionalData: regionalData.map(region => ({
+        region: region._id,
+        growth: 50, // Calculate actual growth based on previous period
+        revenue: region.revenue,
+        transactions: region.transactions
+      })),
+      popularProducts: productData
+    };
 
     console.log('Sending report data:', responseData);
     res.json({

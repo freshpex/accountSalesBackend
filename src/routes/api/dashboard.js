@@ -14,6 +14,56 @@ router.get('/overview', authenticateToken, async (req, res) => {
 
     const salesTrends = await Sale.aggregate([
       {
+        $lookup: {
+          from: 'products',
+          localField: 'productId',
+          foreignField: '_id',
+          as: 'product'
+        }
+      },
+      {
+        $unwind: '$product'
+      },
+      {
+        $group: {
+          _id: { 
+            date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+            region: "$region",
+            productType: "$product.type"
+          },
+          revenue: { $sum: "$amount" },
+          profit: { $sum: "$profit" },
+          orders: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: "$_id.date",
+          revenue: { $sum: "$revenue" },
+          profit: { $sum: "$profit" },
+          orders: { $sum: "$orders" },
+          regions: {
+            $push: {
+              region: "$_id.region",
+              revenue: "$revenue",
+              orders: "$orders"
+            }
+          },
+          productTypes: {
+            $push: {
+              type: "$_id.productType",
+              revenue: "$revenue",
+              orders: "$orders"
+            }
+          }
+        }
+      },
+      { $sort: { "_id": -1 } }
+    ]);
+
+    // Calculate regional growth
+    const regionalData = await Sale.aggregate([
+      {
         $match: {
           createdAt: { 
             $gte: new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000) 
@@ -22,15 +72,95 @@ router.get('/overview', authenticateToken, async (req, res) => {
       },
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          revenue: { $sum: "$amount" },
-          profit: { $sum: "$profit" },
+          _id: "$region",
+          currentRevenue: { $sum: "$amount" },
           orders: { $sum: 1 }
         }
       },
-      { $sort: { "_id": -1 } }
+      {
+        $lookup: {
+          from: 'sales',
+          let: { region: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$region", "$$region"] },
+                    { 
+                      $gte: [
+                        "$createdAt", 
+                        new Date(Date.now() - (dateRange * 2) * 24 * 60 * 60 * 1000)
+                      ]
+                    },
+                    { 
+                      $lt: [
+                        "$createdAt", 
+                        new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000)
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              $group: {
+                _id: null,
+                previousRevenue: { $sum: "$amount" }
+              }
+            }
+          ],
+          as: "previous"
+        }
+      },
+      {
+        $project: {
+          region: "$_id",
+          currentRevenue: 1,
+          orders: 1,
+          growth: {
+            $multiply: [
+              {
+                $divide: [
+                  { $subtract: ["$currentRevenue", { $arrayElemAt: ["$previous.previousRevenue", 0] }] },
+                  { $max: [{ $arrayElemAt: ["$previous.previousRevenue", 0] }, 1] }
+                ]
+              },
+              100
+            ]
+          }
+        }
+      }
     ]);
 
+    // Get popular products with more details
+    const popularProducts = await Product.aggregate([
+      {
+        $lookup: {
+          from: 'sales',
+          localField: '_id',
+          foreignField: 'productId',
+          as: 'sales'
+        }
+      },
+      {
+        $project: {
+          type: 1,
+          price: 1,
+          status: 1,
+          totalSales: { $size: "$sales" },
+          totalRevenue: { $sum: "$sales.amount" }
+        }
+      },
+      {
+        $sort: { totalSales: -1, totalRevenue: -1 }
+      },
+      {
+        $limit: 5
+      }
+    ]);
+
+    // Get customer growth with proper calculations
     const customerGrowth = await Customer.aggregate([
       {
         $match: {
@@ -49,57 +179,9 @@ router.get('/overview', authenticateToken, async (req, res) => {
       { $sort: { "_id": -1 } }
     ]);
 
-    const productAnalytics = await Product.aggregate([
-      {
-        $facet: {
-          popular: [
-            { $match: { status: { $ne: null } } },
-            { $sort: { sales: -1 } },
-            { $limit: 5 },
-            { 
-              $project: { 
-                name: 1,
-                type: 1, 
-                price: 1, 
-                sales: 1, 
-                status: 1 
-              } 
-            }
-          ],
-          inventory: [
-            {
-              $group: {
-                _id: "$status",
-                count: { $sum: 1 }
-              }
-            }
-          ],
-          categories: [
-            {
-              $group: {
-                _id: "$type",
-                revenue: { $sum: "$price" },
-                count: { $sum: 1 }
-              }
-            }
-          ]
-        }
-      }
-    ]);
-
-    // Get recent activities with proper population
-    const recentActivities = await Transaction.find({})
-      .populate('productId', 'name type price')
-      .populate('customerId', 'name email')
-      .sort('-createdAt')
-      .limit(10)
-      .lean();
-
     res.json({
       salesTrends: {
         daily: salesTrends,
-        weekly: salesTrends.slice(0, 7),
-        monthly: salesTrends.slice(0, 30),
         summary: {
           totalRevenue: salesTrends.reduce((acc, day) => acc + (day.revenue || 0), 0),
           totalProfit: salesTrends.reduce((acc, day) => acc + (day.profit || 0), 0),
@@ -113,9 +195,16 @@ router.get('/overview', authenticateToken, async (req, res) => {
           totalSpent: customerGrowth.reduce((acc, day) => acc + (day.totalSpent || 0), 0)
         }
       },
-      productAnalytics: productAnalytics[0],
-      recentActivities
+      regionalData,
+      popularProducts,
+      recentActivities: await Transaction.find()
+        .populate('productId', 'name type price')
+        .populate('customerId', 'name email')
+        .sort('-createdAt')
+        .limit(10)
+        .lean()
     });
+
   } catch (error) {
     console.error('Dashboard Overview Error:', error);
     res.status(500).json({ 
