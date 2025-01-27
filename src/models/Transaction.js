@@ -7,7 +7,7 @@ const transactionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    default: '000000000000000000000000' // Default ObjectId
+    default: '000000000000000000000000'
   },
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
