@@ -6,7 +6,6 @@ const s3Client = require('../config/supabaseS3');
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
-  // Check file type
   if (!file.mimetype.match(/^image\/(jpeg|jpg|png)$/)) {
     cb(new Error('Only JPEG, JPG and PNG files are allowed'), false);
     return;
@@ -17,8 +16,8 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB
-    files: 1 // Only allow 1 file
+    fileSize: 8 * 1024 * 1024,
+    files: 1
   },
   fileFilter
 });
