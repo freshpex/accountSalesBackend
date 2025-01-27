@@ -48,22 +48,67 @@ const sendEmail = async ({ to, subject, template, context }) => {
 const generateEmailTemplate = (template, context) => {
   const baseStyle = `
     <style>
-      .container { max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; }
-      .header { background: #2C3E50; padding: 20px; text-align: center; }
-      .header img { max-width: 150px; }
-      .content { padding: 30px; background: #ffffff; }
-      .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; }
-      .button { background: #3498DB; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 15px 0; }
-      .details { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; }
-      .social-links { margin: 20px 0; }
-      .social-links a { margin: 0 10px; color: #2C3E50; text-decoration: none; }
+      @media only screen and (max-width: 600px) {
+        .container { width: 100% !important; }
+        .content { padding: 20px !important; }
+        .button { display: block !important; text-align: center !important; }
+      }
+      .container { max-width: 600px; margin: 0 auto; font-family: 'Arial', sans-serif; }
+      .header { background: linear-gradient(135deg, #2C3E50 0%, #3498DB 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+      .header img { max-width: 200px; height: auto; }
+      .content { padding: 40px; background: #ffffff; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+      .footer { background: #f8f9fa; padding: 30px; text-align: center; font-size: 14px; border-radius: 0 0 10px 10px; }
+      .button { 
+        background: linear-gradient(135deg, #3498DB 0%, #2980B9 100%);
+        color: white;
+        padding: 15px 30px;
+        text-decoration: none;
+        border-radius: 25px;
+        display: inline-block;
+        margin: 20px 0;
+        font-weight: bold;
+        transition: all 0.3s ease;
+      }
+      .button:hover { 
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+      }
+      .details {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+        border-left: 5px solid #3498DB;
+      }
+      .social-links {
+        margin: 25px 0;
+        padding: 20px 0;
+        border-top: 1px solid #eee;
+        border-bottom: 1px solid #eee;
+      }
+      .social-links a {
+        margin: 0 15px;
+        color: #2C3E50;
+        text-decoration: none;
+        font-weight: bold;
+      }
+      .social-links img {
+        width: 24px;
+        height: 24px;
+        vertical-align: middle;
+        margin-right: 5px;
+      }
+      .highlight {
+        color: #3498DB;
+        font-weight: bold;
+      }
     </style>
   `;
 
   const footer = `
     <div class="footer">
       <div class="social-links">
-        <a href="https://www.facebook.com/">Facebook</a> | <a href="https://www.x.com/login">Twitter</a> | <a href="https://www.instagram.com/login">Instagram</a>
+        <a href="https://www.facebook.com/"><img src="https://scottech.vercel.app/facebook-icon.png" alt="Facebook">Facebook</a> | <a href="https://www.x.com/login"><img src="https://scottech.vercel.app/twitter-icon.png" alt="Twitter">Twitter</a> | <a href="https://www.instagram.com/login"><img src="https://scottech.vercel.app/instagram-icon.png" alt="Instagram">Instagram</a>
       </div>
       <p>© ${new Date().getFullYear()} ScottTech. All rights reserved.</p>
       <p>8732 Tech Street, Silicon Valley, CA 94025</p>
@@ -79,16 +124,25 @@ const generateEmailTemplate = (template, context) => {
             <img src="https://scottech.vercel.app/logo.svg" alt="ScottTech Logo">
           </div>
           <div class="content">
-            <h1 style="color: #2C3E50;">Welcome to ScottTech!</h1>
+            <h1 style="color: #2C3E50; font-size: 28px; margin-bottom: 30px;">Welcome to the Future of Tech!, Scotts Technology.</h1>
             <p>Dear ${context.name},</p>
-            <p>We're thrilled to welcome you to the ScottTech family! Your account has been successfully created, and you're now part of our growing community of digital entrepreneurs.</p>
-            <p>Here's what you can do next:</p>
-            <ul>
-              <li>Complete your profile</li>
-              <li>Browse our marketplace</li>
-              <li>Set up your security preferences</li>
-            </ul>
-            <a href="${process.env.FRONTEND_URL}/dashboard" class="button">Visit Your Dashboard</a>
+            <p>🎉 Welcome to the ScottTech family! We're excited to have you join our community of innovators and digital entrepreneurs.</p>
+            
+            <div class="details">
+              <h3>🚀 Getting Started</h3>
+              <ul style="list-style-type: none; padding: 0;">
+                <li>✅ Complete your profile</li>
+                <li>🏪 Explore our marketplace</li>
+                <li>🔒 Set up two-factor authentication</li>
+                <li>💡 Check out our featured products</li>
+              </ul>
+            </div>
+
+            <a href="${process.env.FRONTEND_URL}/dashboard" class="button">
+              Access Your Dashboard →
+            </a>
+            
+            <p style="font-size: 14px; color: #666;">Need help getting started? Our support team is available 24/7!</p>
           </div>
           ${footer}
         </div>

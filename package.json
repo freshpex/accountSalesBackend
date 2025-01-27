@@ -42,7 +42,8 @@
     "passport-google-oauth20": "^2.0.0",
     "qrcode": "^1.5.4",
     "speakeasy": "^2.0.0",
-    "stripe": "^10.2.0"
+    "stripe": "^10.2.0",
+    "vercel": "^39.3.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"
