@@ -7,6 +7,12 @@ A robust Node.js/Express backend service for managing social media account sales
 ![MongoDB](https://img.shields.io/badge/MongoDB-v6.12-green.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
+## 🌐 Frontend Application
+The frontend application is deployed and accessible at: [https://scottech.vercel.app](https://scottech.vercel.app)
+
+- The repository is accessible at: [https://github.com/freshpex/accountSalesFrontend](https://github.com/freshpex/accountSalesFrontend)
+
+
 ## 🌟 Core Features
 
 ### Authentication & Security
@@ -107,6 +113,41 @@ npm start
 
 ## 📚 API Documentation
 
+### Authentication & User Management
+
+## 🔥 Complete API Documentation
+
+### Core API Groups
+1. **User Management**
+   - Authentication & Authorization
+   - Profile Management
+   - Security Settings
+   - Role-based Access Control
+
+2. **Product System**
+   - Social Media Accounts
+   - Multi-platform Support
+   - Image Management
+   - Inventory Control
+
+3. **Transaction System**
+   - Payment Processing
+   - Escrow Service
+   - Purchase Verification
+   - Credential Transfer
+
+4. **Analytics & Reporting**
+   - Sales Analytics
+   - Customer Insights
+   - Regional Performance
+   - Revenue Tracking
+
+### Detailed Endpoints
+
+#### Authentication System
+
+## 🔥 API Endpoints
+
 ### Authentication Endpoints
 - `POST /api/v1/user/signup` - Register new user
 - `POST /api/v1/user/signin` - User login
@@ -114,20 +155,80 @@ npm start
 - `GET /api/v1/user/auth/google` - Google OAuth login
 
 ### Product Endpoints
-- `GET /api/v1/products` - List all products
-- `POST /api/v1/products` - Create new product
-- `PUT /api/v1/products/:id` - Update product
-- `DELETE /api/v1/products/:id` - Delete product
+- `GET     /api/v1/products`                - List all products
+- `POST    /api/v1/products`                - Create product
+- `GET     /api/v1/products/:id`            - Get product details
+- `PUT     /api/v1/products/:id`            - Update product
+- `DELETE  /api/v1/products/:id`            - Delete product
+- `GET     /api/v1/products/available`      - List available products
+- `GET     /api/v1/products/stats`          - Get product statistics
 
 ### Transaction Endpoints
-- `POST /api/v1/transactions/initiate` - Start transaction
-- `GET /api/v1/transactions` - List transactions
-- `GET /api/v1/transactions/:id/credentials` - Get account credentials
+#### Transaction Routes
+- `POST    /api/v1/transactions/initiate`         - Start transaction
+- `GET     /api/v1/transactions `                 - List transactions
+- `GET     /api/v1/transactions/:id`              - Transaction details
+- `PUT     /api/v1/transactions/:id`              - Update transaction
+- `DELETE  /api/v1/transactions/:id`              - Delete transaction
+- `GET     /api/v1/transactions/:id/credentials`  - Get purchased credentials
+#### Payment Processing
+- `POST    /api/v1/transactions/callback`       - Payment callback
+- `GET     /api/v1/transactions/verify/:id`     - Verify payment
+- `POST    /api/v1/transactions/webhook`        - Payment webhook
 
 ### Dashboard Endpoints
-- `GET /api/v1/user/dashboard/overview` - Dashboard overview
-- `GET /api/v1/user/dashboard/metrics` - User metrics
-- `GET /api/v1/user/dashboard/spending-chart` - Spending analytics
+#### Admin Dashboard
+- `GET     /api/v1/dashboard/overview`      - Get dashboard overview
+- `GET     /api/v1/dashboard/metrics`       - Get performance metrics
+- `GET     /api/v1/dashboard/regional`      - Get regional analytics
+- `GET     /api/v1/dashboard/popular`       - Get popular products
+#### User Dashboard
+- `GET     /api/v1/user/dashboard/overview`     - Personal dashboard
+- `GET     /api/v1/user/dashboard/spending`     - Spending analytics
+- `GET     /api/v1/user/dashboard/activity`     - Recent activities
+- `GET     /api/v1/user/dashboard/purchases`    - Purchase history
+
+### Customer Management
+- `GET     /api/v1/customers`              - List customers
+- `POST    /api/v1/customers`              - Add customer
+- `GET     /api/v1/customers/:id`          - Customer details
+- `PUT     /api/v1/customers/:id`          - Update customer
+- `DELETE  /api/v1/customers/:id`          - Delete customer
+- `PATCH   /api/v1/customers/:id/segment`  - Update segment
+- `GET     /api/v1/customers/:id/activity` - Customer activity
+
+### Help & Support System
+- `GET     /api/v1/help-tickets`                - List tickets
+- `POST    /api/v1/help-tickets`                - Create ticket
+- `GET     /api/v1/help-tickets/:id`            - Ticket details
+- `PUT     /api/v1/help-tickets/:id`            - Update ticket
+- `POST    /api/v1/help-tickets/:id/responses`  - Add response
+- `PATCH   /api/v1/help-tickets/:id/status`     - Update status
+
+### Notification System
+- `GET     /api/v1/notifications`             - Get notifications
+- `PATCH   /api/v1/notifications/:id/read`    - Mark as read
+- `GET     /api/v1/notifications/settings`    - Get settings
+- `PUT     /api/v1/notifications/settings`    - Update settings
+
+### Reports & Analytics
+- `GET     /api/v1/sales/report`          - Get sales report
+- `GET     /api/v1/sales/analytics`       - Get analytics
+- `GET     /api/v1/sales/regional`        - Regional data
+- `GET     /api/v1/sales/performance`     - Performance metrics
+
+### Escrow System
+- `POST    /api/v1/escrow`                 - Create escrow
+- `GET     /api/v1/escrow/:id`             - Get escrow details
+- `PATCH   /api/v1/escrow/:id/status`      - Update status
+- `GET     /api/v1/escrow/:id/credentials` - Get credentials
+
+## Product Features
+- Multi-image upload (up to 4 images)
+- Account credentials management
+- Social media metrics tracking
+- Region-based categorization
+- Sales performance tracking
 
 ## 🔒 Security Features
 
@@ -138,12 +239,67 @@ npm start
 - Password hashing
 - Input validation
 - XSS protection
+- OAuth 2.0 integration
+- Password hashing with bcrypt
+- Two-factor authentication
+- Session management
+
+## API Security
+
+- Rate limiting per endpoint
+- CORS configuration
+- Request validation
+- Input sanitization
+- XSS protection
+- SQL injection prevention
+
+## Data Protection
+- Encrypted credentials storage
+- Secure file uploads
+- Access control
+- Role-based permissions
+
+## 🤖 Automated Processes
+
+### Background Jobs
+- Sales report generation
+- Customer segmentation updates
+- Analytics calculation
+- Email notifications
+- Activity logging
+
+### Webhooks
+- Payment notifications
+- Transaction updates
+- System alerts
+- Integration events
+
 
 ## 📊 Database Models
 
 - User
+  - Authentication details
+  - Profile information
+  - Security settings
+  - Notification preferences
+
 - Product
+  - Account details
+  - Media content
+  - Sales metrics
+  - Security features
+
 - Transaction
+  - Payment details
+  - Product information
+  - Customer data
+  - Status tracking
+
+- Customer
+  - Profile details
+  - Purchase history
+  - Segment information
+  - Activity tracking
 - UserProfile
 - Notification
 - HelpTicket
@@ -196,7 +352,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-For support, email support@scotttech.com or create an issue in the repository.
+For support, email epekipoluenoch@gmail.com or create an issue in the repository.
 
 ## 🙏 Acknowledgments
 

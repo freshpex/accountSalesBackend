@@ -7,7 +7,6 @@ const { profileUpload, uploadProfileToSupabase, uploadMiddleware } = require('..
 
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    // First try to find existing profile
     let profile = await UserProfile.findOne({ userId: req.user.userId });
     
     const user = await User.findById(req.user.userId);
@@ -16,7 +15,6 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 
     if (!profile) {
-      // Create new profile with user data
       profile = await UserProfile.create({
         userId: user._id,
         firstName: user.firstName,
