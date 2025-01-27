@@ -56,24 +56,64 @@ salesReportSchema.methods.calculateMetrics = async function() {
   const startDate = this.period.start;
   const endDate = this.period.end;
 
-  const metrics = await Transaction.aggregate([
-    {
-      $match: {
-        createdAt: { $gte: startDate, $lte: endDate },
-        status: 'completed'
+  const [transactionMetrics, productMetrics, customerMetrics] = await Promise.all([
+    Transaction.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate, $lte: endDate },
+          status: 'completed'
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$amount' },
+          totalTransactions: { $count: {} },
+          uniqueCustomers: { $addToSet: '$customerId' },
+          avgTicketSize: { $avg: '$amount' }
+        }
       }
-    },
-    {
-      $group: {
-        _id: null,
-        totalRevenue: { $sum: '$amount' },
-        totalTransactions: { $count: {} },
-        uniqueCustomers: { $addToSet: '$customerId' }
+    ]),
+    Product.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$type',
+          totalSold: { $sum: { $cond: [{ $eq: ['$status', 'sold'] }, 1, 0] } },
+          revenue: { $sum: '$price' }
+        }
       }
-    }
+    ]),
+    User.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$segment',
+          count: { $sum: 1 },
+          totalSpent: { $sum: '$metrics.totalSpent' }
+        }
+      }
+    ])
   ]);
 
-  return metrics[0] || {};
+  return {
+    transactions: transactionMetrics[0] || {},
+    products: productMetrics,
+    customers: customerMetrics
+  };
+};
+
+// Add performance tracking methods
+salesReportSchema.methods.trackPerformance = async function() {
+  // Implement performance tracking logic
 };
 
 module.exports = mongoose.model('SalesReport', salesReportSchema);
