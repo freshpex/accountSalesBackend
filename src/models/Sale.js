@@ -32,31 +32,39 @@ const saleSchema = new mongoose.Schema({
     default: 'completed'
   },
   paymentMethod: String,
-  region: String,
+  region: {
+    type: String,
+    required: true,
+    default: 'unknown'
+  },
   salesPerson: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  productType: String,
-  totalAmount: {
+  type: {
+    type: String,
+    required: true
+  },
+  priceAtSale: {
     type: Number,
-    required: true,
-    default: function() {
-      return this.amount * this.quantity;
-    }
+    required: true
   }
 }, {
   timestamps: true
 });
 
 saleSchema.pre('save', async function(next) {
-  if (this.isNew || this.isModified('productId')) {
+  if (!this.profit) {
+    this.profit = this.amount * 0.2;
+  }
+  
+  if (!this.type && this.productId) {
     try {
       const Product = mongoose.model('Product');
       const product = await Product.findById(this.productId);
       if (product) {
-        this.productType = product.type;
-        this.region = this.region || product.region;
+        this.type = product.type;
+        this.priceAtSale = product.price;
       }
     } catch (error) {
       console.error('Error in sale pre-save:', error);
@@ -65,34 +73,43 @@ saleSchema.pre('save', async function(next) {
   next();
 });
 
-saleSchema.statics.getDashboardStats = async function(dateRange) {
-  const startDate = new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000);
-  
-  return this.aggregate([
-    {
-      $match: {
-        createdAt: { $gte: startDate },
-        status: 'completed'
+saleSchema.post('save', async function(doc) {
+  try {
+    const Product = mongoose.model('Product');
+    const Customer = mongoose.model('Customer');
+    
+    // Update product sales metrics
+    await Product.findByIdAndUpdate(doc.productId, {
+      $inc: {
+        'sales.count': 1,
+        'sales.totalRevenue': doc.amount
+      },
+      $set: {
+        'sales.lastSaleAt': doc.createdAt,
+        status: 'sold'
       }
-    },
-    {
-      $group: {
-        _id: {
-          date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          region: "$region",
-          productType: "$productType"
-        },
-        revenue: { $sum: "$totalAmount" },
-        profit: { $sum: "$profit" },
-        orders: { $sum: 1 }
+    });
+
+    // Update customer metrics
+    await Customer.findByIdAndUpdate(doc.customerId, {
+      $inc: {
+        'metrics.totalSpent': doc.amount,
+        'metrics.totalOrders': 1
+      },
+      $set: {
+        'metrics.lastOrderDate': doc.createdAt
       }
-    }
-  ]);
-};
+    });
+  } catch (error) {
+    console.error('Error in sale post-save hook:', error);
+  }
+});
 
 saleSchema.index({ createdAt: 1, status: 1 });
 saleSchema.index({ region: 1, createdAt: 1 });
 saleSchema.index({ productId: 1, createdAt: 1 });
 saleSchema.index({ customerId: 1, createdAt: 1 });
+saleSchema.index({ type: 1, createdAt: -1 });
+saleSchema.index({ priceAtSale: 1 });
 
 module.exports = mongoose.model('Sale', saleSchema);

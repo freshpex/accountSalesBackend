@@ -11,206 +11,157 @@ router.get('/overview', authenticateToken, async (req, res) => {
   try {
     const { timeRange = 'monthly' } = req.query;
     const dateRange = timeRange === 'weekly' ? 7 : 30;
+    const startDate = new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000);
 
-    const salesTrends = await Sale.aggregate([
-      {
-        $lookup: {
-          from: 'products',
-          localField: 'productId',
-          foreignField: '_id',
-          as: 'product'
-        }
-      },
-      {
-        $unwind: '$product'
-      },
-      {
-        $group: {
-          _id: { 
-            date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-            region: "$region",
-            productType: "$product.type"
-          },
-          revenue: { $sum: "$amount" },
-          profit: { $sum: "$profit" },
-          orders: { $sum: 1 }
-        }
-      },
-      {
-        $group: {
-          _id: "$_id.date",
-          revenue: { $sum: "$revenue" },
-          profit: { $sum: "$profit" },
-          orders: { $sum: "$orders" },
-          regions: {
-            $push: {
-              region: "$_id.region",
-              revenue: "$revenue",
-              orders: "$orders"
-            }
-          },
-          productTypes: {
-            $push: {
-              type: "$_id.productType",
-              revenue: "$revenue",
-              orders: "$orders"
-            }
-          }
-        }
-      },
-      { $sort: { "_id": -1 } }
-    ]);
+    // Add status check to all aggregations
+    const salesMatch = {
+      createdAt: { $gte: startDate },
+      status: 'completed'
+    };
 
-    // Calculate regional growth
-    const regionalData = await Sale.aggregate([
-      {
-        $match: {
-          createdAt: { 
-            $gte: new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000) 
-          }
-        }
-      },
-      {
-        $group: {
-          _id: "$region",
-          currentRevenue: { $sum: "$amount" },
-          orders: { $sum: 1 }
-        }
-      },
-      {
-        $lookup: {
-          from: 'sales',
-          let: { region: "$_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$region", "$$region"] },
-                    { 
-                      $gte: [
-                        "$createdAt", 
-                        new Date(Date.now() - (dateRange * 2) * 24 * 60 * 60 * 1000)
-                      ]
-                    },
-                    { 
-                      $lt: [
-                        "$createdAt", 
-                        new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000)
-                      ]
-                    }
-                  ]
-                }
-              }
+    const [salesData, regionalData, popularProducts, customerData, recentTransactions] = await Promise.all([
+      // Sales Trends
+      Sale.aggregate([
+        {
+          $match: salesMatch
+        },
+        {
+          $group: {
+            _id: {
+              date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }
             },
-            {
-              $group: {
-                _id: null,
-                previousRevenue: { $sum: "$amount" }
-              }
-            }
-          ],
-          as: "previous"
-        }
-      },
-      {
-        $project: {
-          region: "$_id",
-          currentRevenue: 1,
-          orders: 1,
-          growth: {
-            $multiply: [
-              {
-                $divide: [
-                  { $subtract: ["$currentRevenue", { $arrayElemAt: ["$previous.previousRevenue", 0] }] },
-                  { $max: [{ $arrayElemAt: ["$previous.previousRevenue", 0] }, 1] }
-                ]
-              },
-              100
-            ]
+            revenue: { $sum: "$amount" },
+            profit: { $sum: "$profit" },
+            orders: { $sum: 1 }
+          }
+        },
+        { $sort: { "_id.date": -1 } }
+      ]),
+
+      // Regional Data
+      Sale.aggregate([
+        {
+          $match: salesMatch
+        },
+        {
+          $group: {
+            _id: "$region",
+            revenue: { $sum: "$amount" },
+            orders: { $sum: 1 }
           }
         }
-      }
-    ]);
+      ]),
 
-    // Get popular products with more details
-    const popularProducts = await Product.aggregate([
-      {
-        $lookup: {
-          from: 'sales',
-          localField: '_id',
-          foreignField: 'productId',
-          as: 'sales'
-        }
-      },
-      {
-        $project: {
-          type: 1,
-          price: 1,
-          status: 1,
-          totalSales: { $size: "$sales" },
-          totalRevenue: { $sum: "$sales.amount" }
-        }
-      },
-      {
-        $sort: { totalSales: -1, totalRevenue: -1 }
-      },
-      {
-        $limit: 5
-      }
-    ]);
-
-    // Get customer growth with proper calculations
-    const customerGrowth = await Customer.aggregate([
-      {
-        $match: {
-          createdAt: { 
-            $gte: new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000) 
+      // Popular Products
+      Product.aggregate([
+        {
+          $match: { status: { $in: ['sold', 'available'] } }
+        },
+        {
+          $lookup: {
+            from: 'sales',
+            localField: '_id',
+            foreignField: 'productId',
+            as: 'sales',
+            pipeline: [{ $match: { status: 'completed' } }]
+          }
+        },
+        {
+          $addFields: {
+            totalSales: { $size: '$sales' },
+            totalRevenue: { $sum: '$sales.amount' }
+          }
+        },
+        {
+          $sort: { totalSales: -1, totalRevenue: -1 }
+        },
+        {
+          $limit: 5
+        },
+        {
+          $project: {
+            username: 1,
+            type: 1,
+            price: 1,
+            status: 1,
+            totalSales: 1,
+            totalRevenue: 1
           }
         }
-      },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          newCustomers: { $sum: 1 },
-          totalSpent: { $sum: "$metrics.totalSpent" }
-        }
-      },
-      { $sort: { "_id": -1 } }
+      ]),
+
+      // Customer Growth
+      Customer.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: startDate }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }
+            },
+            newCustomers: { $sum: 1 }
+          }
+        },
+        { $sort: { "_id.date": -1 } }
+      ]),
+
+      // Recent Activities
+      Transaction.find({
+        createdAt: { $gte: startDate }
+      })
+      .populate('productId', 'username type price')
+      .populate('customerId', 'name email')
+      .sort('-createdAt')
+      .limit(10)
+      .lean()
     ]);
 
-    res.json({
+    const validatedResponse = {
       salesTrends: {
-        daily: salesTrends,
+        daily: salesData.map(day => ({
+          date: day._id.date,
+          revenue: day.revenue || 0,
+          profit: day.profit || 0,
+          orders: day.orders || 0
+        })),
         summary: {
-          totalRevenue: salesTrends.reduce((acc, day) => acc + (day.revenue || 0), 0),
-          totalProfit: salesTrends.reduce((acc, day) => acc + (day.profit || 0), 0),
-          totalOrders: salesTrends.reduce((acc, day) => acc + (day.orders || 0), 0)
+          totalRevenue: salesData.reduce((sum, day) => sum + (day.revenue || 0), 0),
+          totalProfit: salesData.reduce((sum, day) => sum + (day.profit || 0), 0),
+          totalOrders: salesData.reduce((sum, day) => sum + (day.orders || 0), 0)
         }
       },
+      regionalData: regionalData
+        .filter(region => region._id)
+        .map(region => ({
+          region: region._id,
+          revenue: region.revenue || 0,
+          orders: region.orders || 0
+        })),
+      popularProducts: popularProducts
+        .filter(product => product.totalSales > 0)
+        .map(product => ({
+          ...product,
+          totalRevenue: product.totalRevenue || 0,
+          totalSales: product.totalSales || 0
+        })),
       customerGrowth: {
-        daily: customerGrowth,
+        daily: customerData,
         summary: {
-          newCustomers: customerGrowth.reduce((acc, day) => acc + (day.newCustomers || 0), 0),
-          totalSpent: customerGrowth.reduce((acc, day) => acc + (day.totalSpent || 0), 0)
+          newCustomers: customerData.reduce((sum, day) => sum + (day.newCustomers || 0), 0)
         }
       },
-      regionalData,
-      popularProducts,
-      recentActivities: await Transaction.find()
-        .populate('productId', 'name type price')
-        .populate('customerId', 'name email')
-        .sort('-createdAt')
-        .limit(10)
-        .lean()
-    });
+      recentActivities: recentTransactions
+    };
 
+    res.json(validatedResponse);
   } catch (error) {
     console.error('Dashboard Overview Error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to fetch dashboard overview',
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: error.message
     });
   }
 });
@@ -222,6 +173,11 @@ router.get('/metrics', authenticateToken, async (req, res) => {
     const dateRange = timeRange === 'weekly' ? 7 : 30;
     const previousRange = timeRange === 'weekly' ? 14 : 60;
 
+    const baseMatch = {
+      status: 'completed',
+      paymentStatus: 'paid'
+    };
+
     const [
       currentRevenue,
       previousRevenue,
@@ -229,13 +185,31 @@ router.get('/metrics', authenticateToken, async (req, res) => {
       transactionStats,
       productStats
     ] = await Promise.all([
-      Sale.aggregate([
+      Transaction.aggregate([
         {
           $match: {
+            ...baseMatch,
             createdAt: { $gte: new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000) }
           }
         },
-        { $group: { _id: null, total: { $sum: "$amount" } } }
+        {
+          $lookup: {
+            from: 'sales',
+            localField: '_id',
+            foreignField: 'transactionId',
+            as: 'sale'
+          }
+        },
+        {
+          $unwind: '$sale'
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$amount' },
+            count: { $sum: 1 }
+          }
+        }
       ]),
       Sale.aggregate([
         {

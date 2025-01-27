@@ -83,9 +83,27 @@ const productSchema = new mongoose.Schema({
       trim: true,
       default: ''
     }
+  },
+  sales: {
+    count: { type: Number, default: 0 },
+    lastSaleAt: Date,
+    totalRevenue: { type: Number, default: 0 }
+  },
+  analytics: {
+    views: { type: Number, default: 0 },
+    conversions: { type: Number, default: 0 },
+    popularity: { type: Number, default: 0 }
   }
 }, {
   timestamps: true
 });
+
+productSchema.methods.updateSales = async function(saleAmount) {
+  this.sales.count += 1;
+  this.sales.lastSaleAt = new Date();
+  this.sales.totalRevenue += saleAmount;
+  this.analytics.popularity = (this.sales.count * 0.6) + (this.analytics.views * 0.4);
+  return this.save();
+};
 
 module.exports = mongoose.model('Product', productSchema);

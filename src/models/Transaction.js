@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const Sale = require('./Sale');
 
 const transactionSchema = new mongoose.Schema({
   transactionId: String,
@@ -55,6 +56,31 @@ const transactionSchema = new mongoose.Schema({
   updatedAt: {
     type: Date,
     default: Date.now
+  }
+}, {
+  timestamps: true
+});
+
+transactionSchema.post('save', async function(doc) {
+  if (doc.status === 'completed' && doc.paymentStatus === 'paid') {
+    try {
+      const sale = new Sale({
+        transactionId: doc._id,
+        productId: doc.productId,
+        customerId: doc.customerId,
+        amount: doc.amount,
+        quantity: 1,
+        status: 'completed',
+        paymentMethod: doc.paymentMethod,
+        region: doc.meta?.region || 'unknown',
+        type: doc.meta?.productType,
+        priceAtSale: doc.amount
+      });
+
+      await sale.save();
+    } catch (error) {
+      console.error('Error creating sale record:', error);
+    }
   }
 });
 
