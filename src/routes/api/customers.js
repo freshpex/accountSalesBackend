@@ -57,7 +57,7 @@ router.get('/', authenticateToken, async (req, res) => {
         role: 'user',
         createdAt: { $gte: new Date(Date.now() - 30*24*60*60*1000) }
       }),
-      churnRate: 0 // Calculate based on your business logic
+      churnRate: 0 // Will be calculated based on your business logic
     };
 
     // Get segments count for non-admin users
