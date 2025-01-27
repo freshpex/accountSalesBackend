@@ -36,10 +36,59 @@ const saleSchema = new mongoose.Schema({
   salesPerson: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+  productType: String,
+  totalAmount: {
+    type: Number,
+    required: true,
+    default: function() {
+      return this.amount * this.quantity;
+    }
   }
 }, {
   timestamps: true
 });
+
+saleSchema.pre('save', async function(next) {
+  if (this.isNew || this.isModified('productId')) {
+    try {
+      const Product = mongoose.model('Product');
+      const product = await Product.findById(this.productId);
+      if (product) {
+        this.productType = product.type;
+        this.region = this.region || product.region;
+      }
+    } catch (error) {
+      console.error('Error in sale pre-save:', error);
+    }
+  }
+  next();
+});
+
+saleSchema.statics.getDashboardStats = async function(dateRange) {
+  const startDate = new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000);
+  
+  return this.aggregate([
+    {
+      $match: {
+        createdAt: { $gte: startDate },
+        status: 'completed'
+      }
+    },
+    {
+      $group: {
+        _id: {
+          date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          region: "$region",
+          productType: "$productType"
+        },
+        revenue: { $sum: "$totalAmount" },
+        profit: { $sum: "$profit" },
+        orders: { $sum: 1 }
+      }
+    }
+  ]);
+};
 
 saleSchema.index({ createdAt: 1, status: 1 });
 saleSchema.index({ region: 1, createdAt: 1 });
