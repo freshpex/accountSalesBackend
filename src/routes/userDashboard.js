@@ -9,8 +9,8 @@ const Notification = require('../models/Notification');
 const rateLimit = require('express-rate-limit');
 
 const dashboardLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  windowMs: 1 * 60 * 1000,
+  max: 100
 });
 
 router.use(dashboardLimiter);
@@ -42,7 +42,7 @@ router.get('/overview', authenticateToken, async (req, res) => {
       notifications,
       securityStatus
     ] = await Promise.all([
-      // Get user profile
+
       UserProfile.findOne({ userId }),
 
       // Get recent transactions
@@ -617,7 +617,7 @@ router.post('/update-last-seen', authenticateToken, async (req, res) => {
               location,
               timestamp: new Date()
             }],
-            $slice: -10 // Keep only last 10 logins
+            $slice: -10
           }
         }
       }
