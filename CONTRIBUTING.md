@@ -1,4 +1,4 @@
-# Contributing to Account Sales Backend
+# Contributing to Account Sales Backend 🤝
 
 First off, thank you for considering contributing to Account Sales Backend! It's people like you that make this project such a great tool.
 
@@ -37,6 +37,16 @@ Enhancement suggestions are tracked as GitHub issues. When you are creating an e
 * Make sure your code lints
 * Issue that pull request!
 
+=======
+## Getting Started
+
+1. Fork the repository
+2. Clone your fork
+3. Create a new branch: `git checkout -b feature/your-feature`
+
+## Development Setup
+
+1. Install dependencies:
 ## Development Process
 
 1. Fork the repository
