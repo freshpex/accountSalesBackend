@@ -5,6 +5,7 @@ const Sale = require('../../models/Sale');
 const Product = require('../../models/Product');
 const Customer = require('../../models/Customer');
 const Transaction = require('../../models/Transaction');
+const User = require('../../models/User');
 
 // Get Dashboard Overview
 router.get('/overview', authenticateToken, async (req, res) => {
@@ -13,12 +14,16 @@ router.get('/overview', authenticateToken, async (req, res) => {
     const dateRange = timeRange === 'weekly' ? 7 : 30;
     const startDate = new Date(Date.now() - dateRange * 24 * 60 * 60 * 1000);
 
-    const [salesTrends, popularProducts, customerGrowth, recentActivities] = await Promise.all([
-      // Sales trends using Transaction model
+    const endDate = new Date();
+
+    const [salesData, popularProducts, customerGrowth, recentActivities] = await Promise.all([
       Transaction.aggregate([
         {
           $match: {
-            createdAt: { $gte: startDate },
+            createdAt: { 
+              $gte: startDate,
+              $lte: endDate
+            },
             status: 'completed',
             paymentStatus: 'paid'
           }
@@ -29,39 +34,66 @@ router.get('/overview', authenticateToken, async (req, res) => {
               date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }
             },
             revenue: { $sum: "$amount" },
-            orders: { $sum: 1 }
+            orders: { $sum: 1 },
+            profit: { 
+              $sum: { $multiply: ["$amount", 0.2] }
+            }
           }
         },
-        { $sort: { "_id.date": -1 } }
+        {
+          $sort: { "_id.date": -1 }
+        },
+        {
+          $project: {
+            _id: 0,
+            date: "$_id.date",
+            revenue: 1,
+            profit: 1,
+            orders: 1
+          }
+        }
       ]),
 
       // Popular products
       Product.aggregate([
         {
-          $match: { status: 'sold' }
-        },
-        {
           $lookup: {
             from: 'transactions',
             localField: '_id',
             foreignField: 'productId',
-            as: 'sales'
+            as: 'sales',
+            pipeline: [
+              { 
+                $match: { 
+                  status: 'completed',
+                  paymentStatus: 'paid',
+                  createdAt: { $gte: startDate, $lte: endDate }
+                }
+              }
+            ]
           }
         },
         {
-          $project: {
-            type: 1,
-            username: 1,
-            price: 1,
-            totalSales: { $size: '$sales' },
-            totalRevenue: { $sum: '$sales.amount' }
+          $addFields: {
+            totalSales: { $size: "$sales" },
+            totalRevenue: { $sum: "$sales.amount" }
           }
         },
-        { $sort: { totalSales: -1, totalRevenue: -1 } },
-        { $limit: 5 }
+        {
+          $match: {
+            totalSales: { $gt: 0 }
+          }
+        },
+        {
+          $sort: { totalSales: -1, totalRevenue: -1 }
+        },
+        {
+          $limit: 5
+        }
       ]),
 
-      // Customer growth
+      // Rest of the existing Promise.all array...
+      // ...existing customerGrowth and recentActivities queries...
       User.aggregate([
         {
           $match: {
@@ -92,29 +124,64 @@ router.get('/overview', authenticateToken, async (req, res) => {
       .lean()
     ]);
 
-    res.json({
+    // Calculate period comparisons
+    const previousPeriodStart = new Date(startDate);
+    previousPeriodStart.setDate(previousPeriodStart.getDate() - dateRange);
+
+    const formattedResponse = {
       salesTrends: {
-        daily: salesTrends,
+        daily: salesData,
+        weekly: salesData.slice(0, 7),
+        monthly: salesData.slice(0, 30),
         summary: {
-          totalRevenue: salesTrends.reduce((sum, day) => sum + day.revenue, 0),
-          totalOrders: salesTrends.reduce((sum, day) => sum + day.orders, 0)
+          totalRevenue: salesData.reduce((sum, day) => sum + (day.revenue || 0), 0),
+          totalProfit: salesData.reduce((sum, day) => sum + (day.profit || 0), 0),
+          totalOrders: salesData.reduce((sum, day) => sum + (day.orders || 0), 0),
+          averageRevenue: salesData.length ? 
+            salesData.reduce((sum, day) => sum + day.revenue, 0) / salesData.length : 0,
+          averageOrders: salesData.length ? 
+            salesData.reduce((sum, day) => sum + day.orders, 0) / salesData.length : 0,
+          growth: calculateGrowthMetrics(salesData)
         }
       },
       popularProducts,
       customerGrowth: {
         daily: customerGrowth,
         summary: {
-          newCustomers: customerGrowth.reduce((sum, day) => sum + day.newCustomers, 0)
+          newCustomers: customerGrowth.reduce((sum, day) => sum + (day.newCustomers || 0), 0)
         }
       },
       recentActivities
-    });
+    };
+
+    res.json(formattedResponse);
 
   } catch (error) {
     console.error('Dashboard Overview Error:', error);
-    res.status(500).json({ error: 'Failed to fetch overview', details: error.message });
+    res.status(500).json({ 
+      error: 'Failed to fetch overview', 
+      details: error.message
+    });
   }
 });
+
+const calculateGrowthMetrics = (salesData) => {
+  if (salesData.length < 2) return { revenue: 0, orders: 0 };
+
+  const midPoint = Math.floor(salesData.length / 2);
+  const currentPeriod = salesData.slice(0, midPoint);
+  const previousPeriod = salesData.slice(midPoint);
+
+  const currentRevenue = currentPeriod.reduce((sum, day) => sum + day.revenue, 0);
+  const previousRevenue = previousPeriod.reduce((sum, day) => sum + day.revenue, 0);
+  const currentOrders = currentPeriod.reduce((sum, day) => sum + day.orders, 0);
+  const previousOrders = previousPeriod.reduce((sum, day) => sum + day.orders, 0);
+
+  return {
+    revenue: previousRevenue ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0,
+    orders: previousOrders ? ((currentOrders - previousOrders) / previousOrders) * 100 : 0
+  };
+};
 
 // Get Dashboard Metrics
 router.get('/metrics', authenticateToken, async (req, res) => {
@@ -169,7 +236,7 @@ router.get('/metrics', authenticateToken, async (req, res) => {
       User.aggregate([
         {
           $match: {
-            role: 'user'  // Non-admin users are customers
+            role: 'user'
           }
         },
         {
