@@ -116,7 +116,7 @@ router.post('/:id/response', authenticateToken, async (req, res) => {
         _id: req.params.id,
         $or: [
           { customerId: req.user.userId },
-          { status: { $ne: 'closed' } } // Allow admin to respond if ticket is not closed
+          { status: { $ne: 'closed' } }
         ]
       },
       { 
