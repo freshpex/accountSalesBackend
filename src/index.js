@@ -45,7 +45,15 @@ app.set('trust proxy', 1);
 
 // Security Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: function(origin, callback) {
+    if(!origin) return callback(null, true);
+    callback(null, origin);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -68,8 +76,8 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
+  windowMs: 15 * 60 * 100,
+  max: 100,
   message: 'Too many requests from this IP, please try again after 15 minutes'
 });
 
