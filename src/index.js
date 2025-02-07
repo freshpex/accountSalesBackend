@@ -5,7 +5,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
-const { validate } = require('express-validation');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
 const paymentRoutes = require('./routes/payment');
@@ -22,7 +21,6 @@ const productsRoutes = require('./routes/api/products');
 const escrowRoutes = require('./routes/api/escrow');
 const initializeDatabase = require('./init/setupDatabase');
 const userDashboardRoutes = require('./routes/userDashboard');
-const multer = require('multer');
 const passport = require('./config/passport');
 
 require('./jobs/updateSalesReport');
@@ -40,25 +38,7 @@ require('./models/UserProfile');
 
 
 const app = express();
-
-app.set('trust proxy', 1);
-
-// Security Middleware
-app.use(helmet());
-app.use(cors({
-  origin: function(origin, callback) {
-    if(!origin) return callback(null, true);
-    callback(null, origin);
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
-}));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-// Add passport middleware after express middleware
-app.use(passport.initialize());
+const PORT = process.env.PORT || 5000;
 
 // Rate Limiting
 const limiter = rateLimit({
@@ -73,7 +53,6 @@ const limiter = rateLimit({
            req.connection.remoteAddress;
   }
 });
-app.use('/api/', limiter);
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 100,
@@ -87,10 +66,24 @@ const productLimiter = rateLimit({
   message: 'Too many product requests, please try again after a minute'
 });
 
+// Security Middleware
+app.set('trust proxy', 1);
+app.use(helmet());
+app.use(cors({
+  origin: '*',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+}));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(passport.initialize());
+app.use(morgan('dev'));
+
+// Apply rate limiters
+app.use('/api/', limiter);
 app.use('/api/v1/transactions', apiLimiter);
 app.use('/api/v1/products', productLimiter);
-
-app.use(morgan('dev'));
 
 // Root route
 app.get('/', (req, res) => {
@@ -119,17 +112,11 @@ app.use('/api/v1', apiRoutes);
 app.use('/api/v1/products', productsRoutes);
 app.use('/api/v1/escrow', escrowRoutes);
 app.use('/api/v1/user/dashboard', userDashboardRoutes);
-
-// Adding this route for a parcel website
-app.use('/api/v1/parcel', require('./routes/api/parcel'));
-
-// Account Settings Routes
 app.use('/api/v1/user/profile', require('./routes/api/profile'));
 app.use('/api/v1/user/security', require('./routes/api/security'));
 app.use('/api/v1/user/notifications', require('./routes/api/notifications'));
-
-// Add userDashboard routes
 app.use('/api/v1/user/dashboard', require('./routes/userDashboard'));
+app.use('/api/v1/parcel', require('./routes/api/parcel'));
 
 // Global Error Handler
 app.use((err, req, res, next) => {
@@ -152,8 +139,6 @@ app.use((err, req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
-
-const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
