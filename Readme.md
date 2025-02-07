@@ -53,28 +53,28 @@ The frontend application is deployed and accessible at: [https://scottech.vercel
 
 ## 🛠️ Technical Stack
 
-- **Runtime**: Node.js
-- **Framework**: Express.js
-- **Database**: MongoDB with Mongoose
-- **Authentication**: JWT, Passport.js
-- **Storage**: Supabase
-- **Payment**: Flutterwave
-- **Email Service**: Mailjet
+- **Runtime**: [Node.js](https://nodejs.org/)
+- **Framework**: [Express.js](https://expressjs.com/)
+- **Database**: [MongoDB](https://www.mongodb.com/) with [Mongoose](https://mongoosejs.com/)
+- **Authentication**: [JWT](https://jwt.io/), [Passport.js](https://www.passportjs.org/)
+- **Storage**: [Supabase](https://supabase.com/docs)
+- **Payment**: [Flutterwave](https://developer.flutterwave.com/)
+- **Email Service**: [Mailjet](https://dev.mailjet.com/)
 - **Security**: 
-  - Helmet
-  - Express Rate Limit
-  - CORS
+  - [Helmet](https://helmetjs.github.io/)
+  - [Express Rate Limit](https://github.com/nfriedly/express-rate-limit)
+  - [CORS](https://github.com/expressjs/cors)
   - Input validation
   - XSS protection
 
 ## 📋 Prerequisites
 
-- Node.js (v18 or higher)
-- MongoDB
-- Supabase account
-- Flutterwave account
-- Mailjet account
-- Google OAuth credentials (for social login)
+- [Node.js](https://nodejs.org/) (v18 or higher)
+- [MongoDB](https://www.mongodb.com/)
+- [Supabase](https://supabase.com/) account
+- [Flutterwave](https://flutterwave.com/) account
+- [Mailjet](https://www.mailjet.com/) account
+- [Google OAuth](https://developers.google.com/identity/protocols/oauth2) credentials (for social login)
 
 ## 🚀 Getting Started
 
@@ -232,14 +232,14 @@ npm start
 
 ## 🔒 Security Features
 
-- JWT-based authentication
+- [JWT](https://jwt.io/)-based authentication
 - Rate limiting
-- CORS protection
-- Helmet security headers
-- Password hashing
+- [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) protection
+- [Helmet](https://helmetjs.github.io/) security headers
+- Password hashing with [bcrypt](https://github.com/kelektiv/node.bcrypt.js)
 - Input validation
 - XSS protection
-- OAuth 2.0 integration
+- [OAuth 2.0](https://oauth.net/2/) integration
 - Password hashing with bcrypt
 - Two-factor authentication
 - Session management
