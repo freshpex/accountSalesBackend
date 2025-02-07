@@ -70,9 +70,12 @@ const productLimiter = rateLimit({
 app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({
-  origin: '*',
+  origin: function(origin, callback) {
+    if(!origin) return callback(null, true);
+    callback(null, origin);
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
 app.use(express.json({ limit: '10mb' }));
